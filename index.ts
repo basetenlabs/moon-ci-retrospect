@@ -145,37 +145,30 @@ function stripAnsi(text: string): string {
 	return text.replace(/\u001b\[[0-9;]*m/g, "");
 }
 
-function targetOf(action: Action): string {
-	if (action.node.action === "run-task") {
-		const { project, task } = parseTarget(action.node.params.target);
-
-		return `${project}:${task}`;
-	}
-
-	return action.label;
-}
-
 function buildActionRow(action: Action): string {
-	const target = targetOf(action);
 	const emoji = statusEmoji[action.status];
 	const label = statusLabel[action.status];
 	const duration = action.duration ? formatDuration(action.duration) : "-";
 
-	return `| ${emoji} ${label} | \`${target}\` | ${duration} |`;
+	return `| ${emoji} ${label} | \`${action.label}\` | ${duration} |`;
 }
 
 function generateComment(report: RunReport, sortedActions: Action[]): string {
 	const taskActions = sortedActions.filter((a) => a.node.action === "run-task");
-	const totalTasks = taskActions.length;
 	const failedCount = taskActions.filter((a) => failStatuses.has(a.status)).length;
 	const passedCount = taskActions.filter((a) => a.status === "passed").length;
 	const cachedCount = taskActions.filter((a) => a.status === "cached" || a.status === "cached-from-remote").length;
 	const skippedCount = taskActions.filter((a) => a.status === "skipped").length;
 
+	const { owner, repo } = github.context.repo;
+	const sha = github.context.sha;
+	const shortSha = sha.slice(0, 8);
+	const commitUrl = `https://github.com/${owner}/${repo}/commit/${sha}`;
+
 	const lines: string[] = [];
 
 	lines.push(COMMENT_MARKER);
-	lines.push("### 🌙 Moon CI Report");
+	lines.push(`### Run report for [${shortSha}](${commitUrl})`);
 	lines.push("");
 
 	// Summary line
@@ -183,11 +176,12 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 
 	if (report.comparisonEstimate.gain) {
 		const compDuration = formatDuration(report.comparisonEstimate.duration);
-		const savingsPercent = Math.round(report.comparisonEstimate.percent);
+		const savings = formatDuration(report.comparisonEstimate.gain);
+		const savingsPercent = report.comparisonEstimate.percent.toFixed(1);
 
-		lines.push(`Ran **${totalTasks} tasks** in ${totalDuration} (compared to ${compDuration}, saving **${savingsPercent}%**)`);
+		lines.push(`**Total time:** ${totalDuration} | **Comparison time:** ${compDuration} | **Estimated savings:** ${savings} (${savingsPercent}% faster)`);
 	} else {
-		lines.push(`Ran **${totalTasks} tasks** in ${totalDuration}`);
+		lines.push(`**Total time:** ${totalDuration}`);
 	}
 
 	lines.push("");
@@ -224,10 +218,9 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 		lines.push("");
 
 		for (const action of failedActions) {
-			const target = targetOf(action);
 			const duration = action.duration ? formatDuration(action.duration) : "-";
 
-			lines.push(`**${statusEmoji[action.status]} \`${target}\`** — ${statusLabel[action.status]} (${duration})`);
+			lines.push(`**${statusEmoji[action.status]} \`${action.label}\`** — ${statusLabel[action.status]} (${duration})`);
 
 			if (action.error) {
 				lines.push("");
@@ -240,12 +233,12 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 		}
 	}
 
-	// Main table
-	lines.push("| Status | Target | Time |");
+	// Main table (all actions, not just run-task)
+	lines.push("| Status | Action | Time |");
 	lines.push("|--------|--------|------|");
 
-	const mainActions = taskActions.slice(0, MAIN_TABLE_LIMIT);
-	const remainingActions = taskActions.slice(MAIN_TABLE_LIMIT);
+	const mainActions = sortedActions.slice(0, MAIN_TABLE_LIMIT);
+	const remainingActions = sortedActions.slice(MAIN_TABLE_LIMIT);
 
 	for (const action of mainActions) {
 		lines.push(buildActionRow(action));
@@ -256,9 +249,9 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 		lines.push(`And ${remainingActions.length} more...`);
 		lines.push("");
 		lines.push("<details>");
-		lines.push(`<summary>Expanded report (${remainingActions.length} tasks)</summary>`);
+		lines.push(`<summary>Expanded report (${remainingActions.length} actions)</summary>`);
 		lines.push("");
-		lines.push("| Status | Target | Time |");
+		lines.push("| Status | Action | Time |");
 		lines.push("|--------|--------|------|");
 
 		for (const action of remainingActions) {
