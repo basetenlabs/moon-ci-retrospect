@@ -1,6 +1,9 @@
 name: Moonrepo CI Retrospect
 description: Displays the results of `moon ci` in an easy-to-understand format.
-inputs: {}
+inputs:
+  access-token:
+    description: 'GitHub token for posting PR comments. If not provided, only workflow logs are generated.'
+    required: false
 outputs: {}
 runs:
   using: node20

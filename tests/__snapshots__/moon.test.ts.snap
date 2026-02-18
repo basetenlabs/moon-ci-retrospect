@@ -3,6 +3,18 @@
 exports[`basic 1`] = `
 "::debug::Finding run report at .moon/cache/ciReport.json
 ::debug::Found!
+::group::[41m FAIL [49m [1mc:make-error[22m
+[48;5;236m　[31m⏺[39m STDERR　[49m
+This is an error message
+::endgroup::
+::group::[41m FAIL [49m [1mb:make-error[22m
+[48;5;236m　[31m⏺[39m STDERR　[49m
+This is an error message
+::endgroup::
+::group::[41m FAIL [49m [1ma:make-error[22m
+[48;5;236m　[31m⏺[39m STDERR　[49m
+This is an error message
+::endgroup::
 ::group::[42m PASS [49m [1mc:bar[22m
 [34m$ echo bar1 && echo bar2 > /dev/stderr[39m
 [48;5;236m　[32m⏺[39m STDOUT　[49m
@@ -23,10 +35,6 @@ baz2
 foo1
 [48;5;236m　[31m⏺[39m STDERR　[49m
 foo2
-::endgroup::
-::group::[41m FAIL [49m [1mc:make-error[22m
-[48;5;236m　[31m⏺[39m STDERR　[49m
-This is an error message
 ::endgroup::
 ::group::[42m PASS [49m [1mb:bar[22m
 [34m$ echo bar1 && echo bar2 > /dev/stderr[39m
@@ -49,10 +57,6 @@ foo1
 [48;5;236m　[31m⏺[39m STDERR　[49m
 foo2
 ::endgroup::
-::group::[41m FAIL [49m [1mb:make-error[22m
-[48;5;236m　[31m⏺[39m STDERR　[49m
-This is an error message
-::endgroup::
 ::group::[42m PASS [49m [1ma:bar[22m
 [34m$ echo bar1 && echo bar2 > /dev/stderr[39m
 [48;5;236m　[32m⏺[39m STDOUT　[49m
@@ -73,10 +77,6 @@ baz2
 foo1
 [48;5;236m　[31m⏺[39m STDERR　[49m
 foo2
-::endgroup::
-::group::[41m FAIL [49m [1ma:make-error[22m
-[48;5;236m　[31m⏺[39m STDERR　[49m
-This is an error message
 ::endgroup::"
 `;
 
