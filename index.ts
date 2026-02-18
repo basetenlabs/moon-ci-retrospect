@@ -96,24 +96,25 @@ async function main(): Promise<void> {
 
 const COMMENT_MARKER = "<!-- moon-ci-retrospect -->";
 const MAIN_TABLE_LIMIT = 20;
+const SLOW_THRESHOLD_MS = 120_000;
 
 const statusEmoji: Record<ActionStatus, string> = {
-	passed: "🟢",
-	cached: "🟣",
-	"cached-from-remote": "🟣",
-	failed: "🔴",
-	"failed-and-abort": "🔴",
-	aborted: "🟠",
-	"timed-out": "🟠",
-	invalid: "🟠",
-	skipped: "⚪",
-	running: "🔵",
+	passed: "🟩",
+	cached: "🟪",
+	"cached-from-remote": "🟪",
+	failed: "🟥",
+	"failed-and-abort": "🟥",
+	aborted: "🟥",
+	"timed-out": "🟥",
+	invalid: "🟥",
+	skipped: "⬛️",
+	running: "🟦",
 };
 
 const statusLabel: Record<ActionStatus, string> = {
 	passed: "Passed",
 	cached: "Cached",
-	"cached-from-remote": "Cached (remote)",
+	"cached-from-remote": "Cached",
 	failed: "Failed",
 	"failed-and-abort": "Failed",
 	aborted: "Aborted",
@@ -123,11 +124,19 @@ const statusLabel: Record<ActionStatus, string> = {
 	running: "Running",
 };
 
+function getDurationMs(duration: { secs: number; nanos: number }): number {
+	return duration.secs * 1000 + duration.nanos / 1_000_000;
+}
+
 function formatDuration(duration: { secs: number; nanos: number }): string {
-	const totalMs = duration.secs * 1000 + duration.nanos / 1_000_000;
+	const totalMs = getDurationMs(duration);
+
+	if (totalMs === 0) {
+		return "0s";
+	}
 
 	if (totalMs < 1000) {
-		return `${Math.round(totalMs)}ms`;
+		return `${Number(totalMs.toFixed(1))}ms`;
 	}
 
 	if (totalMs < 60_000) {
@@ -140,35 +149,51 @@ function formatDuration(duration: { secs: number; nanos: number }): string {
 	return `${mins}m ${secs}s`;
 }
 
-function stripAnsi(text: string): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping ANSI escape codes
-	return text.replace(/\u001b\[[0-9;]*m/g, "");
+function getActionInfo(action: Action): string {
+	const parts: string[] = [];
+
+	if (action.attempts && action.attempts.length > 0) {
+		parts.push(`${action.attempts.length} attempts`);
+	}
+
+	if (action.duration) {
+		const ms = getDurationMs(action.duration);
+
+		if (ms >= SLOW_THRESHOLD_MS) {
+			parts.push("**SLOW**");
+		}
+	}
+
+	return parts.join(", ");
 }
 
 function buildActionRow(action: Action): string {
 	const emoji = statusEmoji[action.status];
+	const duration = action.duration ? formatDuration(action.duration) : "0s";
 	const label = statusLabel[action.status];
-	const duration = action.duration ? formatDuration(action.duration) : "-";
+	const info = getActionInfo(action);
 
-	return `| ${emoji} ${label} | \`${action.label}\` | ${duration} |`;
+	return `| ${emoji} | \`${action.label}\` | ${duration} | ${label} | ${info} |`;
 }
 
-function generateComment(report: RunReport, sortedActions: Action[]): string {
-	const taskActions = sortedActions.filter((a) => a.node.action === "run-task");
-	const failedCount = taskActions.filter((a) => failStatuses.has(a.status)).length;
-	const passedCount = taskActions.filter((a) => a.status === "passed").length;
-	const cachedCount = taskActions.filter((a) => a.status === "cached" || a.status === "cached-from-remote").length;
-	const skippedCount = taskActions.filter((a) => a.status === "skipped").length;
+const TABLE_HEADER = "|     | Action | Time | Status | Info |";
+const TABLE_ALIGN = "| :-: | :----- | ---: | :----- | :--- |";
 
+function generateComment(report: RunReport, sortedActions: Action[]): string {
 	const { owner, repo } = github.context.repo;
-	const sha = github.context.sha;
+	const pr = github.context.payload.pull_request;
+	const sha = (pr?.["head"] as { sha?: string } | undefined)?.sha ?? github.context.sha;
 	const shortSha = sha.slice(0, 8);
-	const commitUrl = `https://github.com/${owner}/${repo}/commit/${sha}`;
+	const serverUrl = process.env["GITHUB_SERVER_URL"] ?? "https://github.com";
+	const commitUrl = `${serverUrl}/${owner}/${repo}/commit/${sha}`;
 
 	const lines: string[] = [];
 
 	lines.push(COMMENT_MARKER);
-	lines.push(`### Run report for [${shortSha}](${commitUrl})`);
+	lines.push("");
+	lines.push(`## Run report for [${shortSha}](${commitUrl})`);
+	lines.push("");
+	lines.push("---");
 	lines.push("");
 
 	// Summary line
@@ -179,63 +204,16 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 		const savings = formatDuration(report.comparisonEstimate.gain);
 		const savingsPercent = report.comparisonEstimate.percent.toFixed(1);
 
-		lines.push(`**Total time:** ${totalDuration} | **Comparison time:** ${compDuration} | **Estimated savings:** ${savings} (${savingsPercent}% faster)`);
+		lines.push(
+			`Total time: ${totalDuration} | Comparison time: ${compDuration} | Estimated savings: ${savings} (${savingsPercent}% faster)`,
+		);
 	} else {
-		lines.push(`**Total time:** ${totalDuration}`);
+		lines.push(`Total time: ${totalDuration}`);
 	}
 
-	lines.push("");
-
-	// Status summary
-	const summaryParts: string[] = [];
-
-	if (failedCount > 0) {
-		summaryParts.push(`🔴 ${failedCount} failed`);
-	}
-
-	if (passedCount > 0) {
-		summaryParts.push(`🟢 ${passedCount} passed`);
-	}
-
-	if (cachedCount > 0) {
-		summaryParts.push(`🟣 ${cachedCount} cached`);
-	}
-
-	if (skippedCount > 0) {
-		summaryParts.push(`⚪ ${skippedCount} skipped`);
-	}
-
-	if (summaryParts.length > 0) {
-		lines.push(summaryParts.join(" · "));
-		lines.push("");
-	}
-
-	// Failed tasks with error details (always shown prominently)
-	const failedActions = taskActions.filter((a) => failStatuses.has(a.status));
-
-	if (failedActions.length > 0) {
-		lines.push("#### Failed Tasks");
-		lines.push("");
-
-		for (const action of failedActions) {
-			const duration = action.duration ? formatDuration(action.duration) : "-";
-
-			lines.push(`**${statusEmoji[action.status]} \`${action.label}\`** — ${statusLabel[action.status]} (${duration})`);
-
-			if (action.error) {
-				lines.push("");
-				lines.push("```");
-				lines.push(stripAnsi(action.error));
-				lines.push("```");
-			}
-
-			lines.push("");
-		}
-	}
-
-	// Main table (all actions, not just run-task)
-	lines.push("| Status | Action | Time |");
-	lines.push("|--------|--------|------|");
+	// Main table
+	lines.push(TABLE_HEADER);
+	lines.push(TABLE_ALIGN);
 
 	const mainActions = sortedActions.slice(0, MAIN_TABLE_LIMIT);
 	const remainingActions = sortedActions.slice(MAIN_TABLE_LIMIT);
@@ -245,21 +223,19 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 	}
 
 	if (remainingActions.length > 0) {
+		lines.push(`| | And ${remainingActions.length} more... | | | |`);
 		lines.push("");
-		lines.push(`And ${remainingActions.length} more...`);
+		lines.push(`<details><summary><strong>Expanded report</strong></summary><div>`);
 		lines.push("");
-		lines.push("<details>");
-		lines.push(`<summary>Expanded report (${remainingActions.length} actions)</summary>`);
-		lines.push("");
-		lines.push("| Status | Action | Time |");
-		lines.push("|--------|--------|------|");
+		lines.push(TABLE_HEADER);
+		lines.push(TABLE_ALIGN);
 
 		for (const action of remainingActions) {
 			lines.push(buildActionRow(action));
 		}
 
 		lines.push("");
-		lines.push("</details>");
+		lines.push("</div></details>");
 	}
 
 	// Touched files
@@ -267,16 +243,17 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 
 	if (touchedFiles.length > 0) {
 		lines.push("");
-		lines.push("<details>");
-		lines.push(`<summary>Touched files (${touchedFiles.length})</summary>`);
+		lines.push(`<details><summary><strong>Touched files</strong></summary><div>`);
 		lines.push("");
+		lines.push("```");
 
 		for (const file of touchedFiles) {
-			lines.push(`- \`${file}\``);
+			lines.push(file);
 		}
 
+		lines.push("```");
 		lines.push("");
-		lines.push("</details>");
+		lines.push("</div></details>");
 	}
 
 	return lines.join("\n");
