@@ -6,13 +6,7 @@ import * as github from "@actions/github";
 
 import { parseJson } from "@moonrepo/dev";
 
-import type { Action, ActionContext, ActionStatus, OperationMetaTaskExecution, RunReport } from "@moonrepo/types";
-
-// Moon v1 had `touchedFiles`, moon v2 renamed it to `changedFiles`
-type ActionContextCompat = ActionContext & { touchedFiles?: string[] };
-
-// Moon v1 had `"failed-and-abort"` status, moon v2 removed it
-type ActionStatusCompat = ActionStatus | "failed-and-abort";
+import type { Action, ActionStatus, OperationMetaTaskExecution, RunReport } from "@moonrepo/types";
 
 async function loadReport(workspaceRoot: string): Promise<RunReport | null> {
 	for (const fileName of ["ciReport.json", "runReport.json"]) {
@@ -32,12 +26,12 @@ async function loadReport(workspaceRoot: string): Promise<RunReport | null> {
 	return null;
 }
 
-const failStatuses = new Set<ActionStatusCompat>(["failed", "timed-out", "aborted", "invalid", "failed-and-abort"]);
+const failStatuses = new Set<ActionStatus>(["failed", "timed-out", "aborted", "invalid"]);
 
 function sortActionsByFailure(actions: Action[]): Action[] {
 	return [...actions].sort((a, b) => {
-		const aFailed = failStatuses.has(a.status as ActionStatusCompat) ? 0 : 1;
-		const bFailed = failStatuses.has(b.status as ActionStatusCompat) ? 0 : 1;
+		const aFailed = failStatuses.has(a.status) ? 0 : 1;
+		const bFailed = failStatuses.has(b.status) ? 0 : 1;
 		return aFailed - bFailed;
 	});
 }
@@ -71,7 +65,7 @@ async function main(): Promise<void> {
 		const hasStdout = stdout.trim() !== "";
 		const hasStderr = stderr.trim() !== "";
 
-		core.startGroup(`${statusBadges[action.status as ActionStatusCompat] ?? action.status} ${bold(target)}`);
+		core.startGroup(`${statusBadges[action.status]} ${bold(target)}`);
 
 		if (typeof command === "string") {
 			console.log(blue(`$ ${command}`));
@@ -104,12 +98,11 @@ const COMMENT_MARKER = "<!-- moon-ci-retrospect -->";
 const MAIN_TABLE_LIMIT = 20;
 const SLOW_THRESHOLD_MS = 120_000;
 
-const statusEmoji: Record<ActionStatusCompat, string> = {
+const statusEmoji: Record<ActionStatus, string> = {
 	passed: "🟩",
 	cached: "🟪",
 	"cached-from-remote": "🟪",
 	failed: "🟥",
-	"failed-and-abort": "🟥",
 	aborted: "🟥",
 	"timed-out": "🟥",
 	invalid: "🟥",
@@ -117,12 +110,11 @@ const statusEmoji: Record<ActionStatusCompat, string> = {
 	running: "🟦",
 };
 
-const statusLabel: Record<ActionStatusCompat, string> = {
+const statusLabel: Record<ActionStatus, string> = {
 	passed: "Passed",
 	cached: "Cached",
 	"cached-from-remote": "Cached",
 	failed: "Failed",
-	"failed-and-abort": "Failed",
 	aborted: "Aborted",
 	"timed-out": "Timed out",
 	invalid: "Invalid",
@@ -158,11 +150,6 @@ function formatDuration(duration: { secs: number; nanos: number }): string {
 function getActionInfo(action: Action): string {
 	const parts: string[] = [];
 
-	const attempts = (action as Action & { attempts?: { length: number }[] | null }).attempts;
-	if (attempts && attempts.length > 0) {
-		parts.push(`${attempts.length} attempts`);
-	}
-
 	if (action.duration) {
 		const ms = getDurationMs(action.duration);
 
@@ -175,9 +162,9 @@ function getActionInfo(action: Action): string {
 }
 
 function buildActionRow(action: Action): string {
-	const emoji = statusEmoji[action.status as ActionStatusCompat] ?? "❓";
+	const emoji = statusEmoji[action.status];
 	const duration = action.duration ? formatDuration(action.duration) : "0s";
-	const label = statusLabel[action.status as ActionStatusCompat] ?? action.status;
+	const label = statusLabel[action.status];
 	const info = getActionInfo(action);
 
 	return `| ${emoji} | \`${action.label}\` | ${duration} | ${label} | ${info} |`;
@@ -245,17 +232,16 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 		lines.push("</div></details>");
 	}
 
-	// Touched files
-	const context = report.context as ActionContextCompat;
-	const touchedFiles = context.changedFiles ?? context.touchedFiles ?? [];
+	// Changed files
+	const changedFiles = report.context.changedFiles;
 
-	if (touchedFiles.length > 0) {
+	if (changedFiles.length > 0) {
 		lines.push("");
 		lines.push(`<details><summary><strong>Touched files</strong></summary><div>`);
 		lines.push("");
 		lines.push("```");
 
-		for (const file of touchedFiles) {
+		for (const file of changedFiles) {
 			lines.push(file);
 		}
 
@@ -363,7 +349,7 @@ async function fileExists(path: string): Promise<boolean> {
 
 // --- ANSI formatting (workflow logs) ---
 
-const statusBadges: Record<ActionStatusCompat, string> = {
+const statusBadges: Record<ActionStatus, string> = {
 	running: bgGreen(" RUNNING "),
 	passed: bgGreen(" PASS "),
 
@@ -371,7 +357,6 @@ const statusBadges: Record<ActionStatusCompat, string> = {
 	"timed-out": bgRed(" TIMED OUT "),
 	aborted: bgRed(" ABORTED "),
 	invalid: bgRed(" INVALID "),
-	"failed-and-abort": bgRed(" FAILED AND ABORT "),
 
 	skipped: bgBlue(" SKIP "),
 	cached: bgBlue(" CACHED "),
