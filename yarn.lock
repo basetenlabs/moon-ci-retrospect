@@ -64,7 +64,7 @@ __metadata:
     "@actions/github": "npm:^6.0.0"
     "@biomejs/biome": "npm:^1.8.3"
     "@moonrepo/dev": "npm:^3.1.1"
-    "@moonrepo/types": "npm:^1.32.0"
+    "@moonrepo/types": "npm:^2.2.3"
     "@tsconfig/node20": "npm:^20.1.4"
     "@tsconfig/strictest": "npm:^2.0.5"
     "@types/node": "npm:^20.14.6"
@@ -546,10 +546,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@moonrepo/types@npm:^1.32.0":
-  version: 1.33.3
-  resolution: "@moonrepo/types@npm:1.33.3"
-  checksum: 10c0/f22016c6530ec0c9c0d2a9fb1bea305fba6e368ce2644acf752c11456cca717ecbb79a1e22fa86d0c34ada5126f1f9998c8ddce4f562619ab6c74f660c457e4f
+"@moonrepo/types@npm:^2.2.3":
+  version: 2.2.3
+  resolution: "@moonrepo/types@npm:2.2.3"
+  checksum: 10c0/b5f29c94107047b0f9a8d8021cdf954039606f276a9f14b6400158b0c6b1425ff64aae3139ad466c0c5366e29139d690ed051a2177332e9632fd00a9794a6e7f
   languageName: node
   linkType: hard
 

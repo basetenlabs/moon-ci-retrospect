@@ -6,7 +6,13 @@ import * as github from "@actions/github";
 
 import { parseJson } from "@moonrepo/dev";
 
-import type { Action, ActionStatus, OperationMetaTaskExecution, RunReport } from "@moonrepo/types";
+import type { Action, ActionContext, ActionStatus, OperationMetaTaskExecution, RunReport } from "@moonrepo/types";
+
+// Moon v1 had `touchedFiles`, moon v2 renamed it to `changedFiles`
+type ActionContextCompat = ActionContext & { touchedFiles?: string[] };
+
+// Moon v1 had `"failed-and-abort"` status, moon v2 removed it
+type ActionStatusCompat = ActionStatus | "failed-and-abort";
 
 async function loadReport(workspaceRoot: string): Promise<RunReport | null> {
 	for (const fileName of ["ciReport.json", "runReport.json"]) {
@@ -26,12 +32,12 @@ async function loadReport(workspaceRoot: string): Promise<RunReport | null> {
 	return null;
 }
 
-const failStatuses = new Set<ActionStatus>(["failed", "timed-out", "aborted", "invalid", "failed-and-abort"]);
+const failStatuses = new Set<ActionStatusCompat>(["failed", "timed-out", "aborted", "invalid", "failed-and-abort"]);
 
 function sortActionsByFailure(actions: Action[]): Action[] {
 	return [...actions].sort((a, b) => {
-		const aFailed = failStatuses.has(a.status) ? 0 : 1;
-		const bFailed = failStatuses.has(b.status) ? 0 : 1;
+		const aFailed = failStatuses.has(a.status as ActionStatusCompat) ? 0 : 1;
+		const bFailed = failStatuses.has(b.status as ActionStatusCompat) ? 0 : 1;
 		return aFailed - bFailed;
 	});
 }
@@ -65,7 +71,7 @@ async function main(): Promise<void> {
 		const hasStdout = stdout.trim() !== "";
 		const hasStderr = stderr.trim() !== "";
 
-		core.startGroup(`${statusBadges[action.status]} ${bold(target)}`);
+		core.startGroup(`${statusBadges[action.status as ActionStatusCompat] ?? action.status} ${bold(target)}`);
 
 		if (typeof command === "string") {
 			console.log(blue(`$ ${command}`));
@@ -98,7 +104,7 @@ const COMMENT_MARKER = "<!-- moon-ci-retrospect -->";
 const MAIN_TABLE_LIMIT = 20;
 const SLOW_THRESHOLD_MS = 120_000;
 
-const statusEmoji: Record<ActionStatus, string> = {
+const statusEmoji: Record<ActionStatusCompat, string> = {
 	passed: "🟩",
 	cached: "🟪",
 	"cached-from-remote": "🟪",
@@ -111,7 +117,7 @@ const statusEmoji: Record<ActionStatus, string> = {
 	running: "🟦",
 };
 
-const statusLabel: Record<ActionStatus, string> = {
+const statusLabel: Record<ActionStatusCompat, string> = {
 	passed: "Passed",
 	cached: "Cached",
 	"cached-from-remote": "Cached",
@@ -152,8 +158,9 @@ function formatDuration(duration: { secs: number; nanos: number }): string {
 function getActionInfo(action: Action): string {
 	const parts: string[] = [];
 
-	if (action.attempts && action.attempts.length > 0) {
-		parts.push(`${action.attempts.length} attempts`);
+	const attempts = (action as Action & { attempts?: { length: number }[] | null }).attempts;
+	if (attempts && attempts.length > 0) {
+		parts.push(`${attempts.length} attempts`);
 	}
 
 	if (action.duration) {
@@ -168,9 +175,9 @@ function getActionInfo(action: Action): string {
 }
 
 function buildActionRow(action: Action): string {
-	const emoji = statusEmoji[action.status];
+	const emoji = statusEmoji[action.status as ActionStatusCompat] ?? "❓";
 	const duration = action.duration ? formatDuration(action.duration) : "0s";
-	const label = statusLabel[action.status];
+	const label = statusLabel[action.status as ActionStatusCompat] ?? action.status;
 	const info = getActionInfo(action);
 
 	return `| ${emoji} | \`${action.label}\` | ${duration} | ${label} | ${info} |`;
@@ -239,7 +246,8 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 	}
 
 	// Touched files
-	const touchedFiles = report.context.touchedFiles;
+	const context = report.context as ActionContextCompat;
+	const touchedFiles = context.changedFiles ?? context.touchedFiles ?? [];
 
 	if (touchedFiles.length > 0) {
 		lines.push("");
@@ -355,7 +363,7 @@ async function fileExists(path: string): Promise<boolean> {
 
 // --- ANSI formatting (workflow logs) ---
 
-const statusBadges: Record<ActionStatus, string> = {
+const statusBadges: Record<ActionStatusCompat, string> = {
 	running: bgGreen(" RUNNING "),
 	passed: bgGreen(" PASS "),
 
