@@ -26,7 +26,7 @@ async function loadReport(workspaceRoot: string): Promise<RunReport | null> {
 	return null;
 }
 
-const failStatuses = new Set<ActionStatus>(["failed", "timed-out", "aborted", "invalid", "failed-and-abort"]);
+const failStatuses = new Set<ActionStatus>(["failed", "timed-out", "aborted", "invalid"]);
 
 function sortActionsByFailure(actions: Action[]): Action[] {
 	return [...actions].sort((a, b) => {
@@ -103,7 +103,6 @@ const statusEmoji: Record<ActionStatus, string> = {
 	cached: "🟪",
 	"cached-from-remote": "🟪",
 	failed: "🟥",
-	"failed-and-abort": "🟥",
 	aborted: "🟥",
 	"timed-out": "🟥",
 	invalid: "🟥",
@@ -116,7 +115,6 @@ const statusLabel: Record<ActionStatus, string> = {
 	cached: "Cached",
 	"cached-from-remote": "Cached",
 	failed: "Failed",
-	"failed-and-abort": "Failed",
 	aborted: "Aborted",
 	"timed-out": "Timed out",
 	invalid: "Invalid",
@@ -151,10 +149,6 @@ function formatDuration(duration: { secs: number; nanos: number }): string {
 
 function getActionInfo(action: Action): string {
 	const parts: string[] = [];
-
-	if (action.attempts && action.attempts.length > 0) {
-		parts.push(`${action.attempts.length} attempts`);
-	}
 
 	if (action.duration) {
 		const ms = getDurationMs(action.duration);
@@ -238,16 +232,16 @@ function generateComment(report: RunReport, sortedActions: Action[]): string {
 		lines.push("</div></details>");
 	}
 
-	// Touched files
-	const touchedFiles = report.context.touchedFiles;
+	// Changed files
+	const changedFiles = report.context.changedFiles;
 
-	if (touchedFiles.length > 0) {
+	if (changedFiles.length > 0) {
 		lines.push("");
 		lines.push(`<details><summary><strong>Touched files</strong></summary><div>`);
 		lines.push("");
 		lines.push("```");
 
-		for (const file of touchedFiles) {
+		for (const file of changedFiles) {
 			lines.push(file);
 		}
 
@@ -363,7 +357,6 @@ const statusBadges: Record<ActionStatus, string> = {
 	"timed-out": bgRed(" TIMED OUT "),
 	aborted: bgRed(" ABORTED "),
 	invalid: bgRed(" INVALID "),
-	"failed-and-abort": bgRed(" FAILED AND ABORT "),
 
 	skipped: bgBlue(" SKIP "),
 	cached: bgBlue(" CACHED "),
