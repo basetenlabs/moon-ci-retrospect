@@ -8,6 +8,8 @@ test("basic", async () => {
 	const cwd = path.join(import.meta.dirname, "workspaces/basic");
 	const { stdout, stderr } = await $({ cwd })`node ${indexJs}`;
 	expect(stdout).toMatchSnapshot();
+	expect(stdout).toContain("This is an error message");
+	expect(stdout).not.toMatch(/(?:foo|bar|baz)[12]/);
 	expect(stderr).toBe("");
 });
 

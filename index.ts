@@ -49,7 +49,6 @@ async function main(): Promise<void> {
 
 	const sortedActions = sortActionsByFailure(report.actions);
 
-	// Workflow log groups (existing behavior)
 	for (const action of sortedActions) {
 		if (action.node.action !== "run-task") {
 			continue;
@@ -57,6 +56,10 @@ async function main(): Promise<void> {
 
 		const { project, task } = parseTarget(action.node.params.target);
 		const target = `${project}:${task}`;
+		if (!failStatuses.has(action.status)) {
+			core.info(`${statusBadges[action.status]} ${bold(target)}`);
+			continue;
+		}
 
 		const command = commandOf(action);
 
